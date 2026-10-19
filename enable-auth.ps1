@@ -46,10 +46,10 @@ $taskAuthCompleter = {
                 [System.Management.Automation.CompletionResult]::new($taskAuthCandidate, $taskAuthCandidate, 'ParameterValue', $taskAuthCandidate)
             }
         }
-        return
+        if ($taskAuthParts[1] -ne 'order' -or $taskAuthLast -in @('codex', 'claude')) { return }
     }
-    if ($taskAuthParts[1] -notin @('use', 'usage', 'refresh', 'rename')) { return }
-    if ($taskAuthParts.Count -gt 3) { return }
+    if ($taskAuthParts[1] -notin @('use', 'usage', 'refresh', 'rename', 'order')) { return }
+    if ($taskAuthParts.Count -gt 3 -and $taskAuthParts[1] -ne 'order') { return }
     $taskAuthCompletionPath = $env:PYTHONPATH
     $taskAuthCompletionExit = $global:LASTEXITCODE
     try {

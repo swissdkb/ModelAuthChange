@@ -50,6 +50,7 @@ auth use 2            # 直接切换列表中的第 2 个账号
 auth use m            # 唯一前缀匹配 main；多个匹配时提示，不切换
 auth use ma<Tab>      # 按 Tab 补全账号别名（不要输入字面量 <Tab>）
 auth usage --all      # 查询所有账号的额度和重置时间
+auth order main backup # 固定列表顺序：main 为 1，backup 为 2
 ```
 
 快捷命令只作用于当前 PowerShell 窗口，不修改 PATH 或 PowerShell 配置文件。新窗口重新加载即可；在其他目录加载时，使用 `enable-auth.ps1` 的完整路径。若已有同名的 `auth` 命令，脚本会停止，不覆盖它。
@@ -76,6 +77,20 @@ auth use --help              # 两个服务的切换用法，不切换账号
 `codex` 和 `claude` 是保留服务标识，不能用作新账号别名。编号、别名、前缀都只匹配所选服务的账号；两个服务可以各自有一个 `main`。帮助无需区分服务，会统一给出两种服务的示例，并标明专属功能。兼容 `auth --help claude` 等旧写法，但仍显示相同的合并帮助。
 
 Tab 补全读取末尾服务名；例如在 `auth use m claude` 中把光标放到 `m` 后按 Tab，只补全 Claude 的别名。服务名也支持补全，例如 `auth use main cl` 后按 Tab。末尾尚未写服务名时默认补全 Codex 账号。已打开的 PowerShell 可重新加载 `enable-auth.ps1` 更新补全，或打开一个已安装自动加载的新窗口。
+
+### 调整两台电脑的账号顺序
+
+列表编号按本机保存的顺序排列，默认会受添加、导入先后影响。可以指定并持久保存顺序：
+
+```powershell
+auth order main backup          # Codex：main 排第 1，backup 排第 2
+auth order main backup claude   # Claude 同样支持
+auth order 2 1                  # 按当前列表编号交换前两个账号
+```
+
+所有编号都按操作前的同一份列表解析。未指定的账号保持相对顺序，排在指定账号后面；重复账号或无效选择会中止，不修改顺序。调整仅保存本机列表，不切换登录，也不需要退出正在使用的 Codex / Claude。主菜单也可选择“9 调整顺序”。
+
+两台电脑分别执行相同的**别名顺序**即可对齐编号；顺序不会自动跨设备同步。跨设备日常切换也可直接使用 `auth use main`，不依赖编号。
 
 ## Claude Code
 
@@ -173,6 +188,7 @@ CC Switch 的订阅文件通常是 `%USERPROFILE%\.cc-switch\codex_oauth_auth.js
 | `refresh backup` | 退出客户端后，让 Codex 刷新保存的凭据，之后需 `use` 激活 |
 | `use backup` | 保存当前账号最新凭据，切换到目标账号 |
 | `rename backup second` | 修改账号名称 |
+| `order main backup` | 持久保存列表顺序和编号，不切换账号 |
 | `usage` | 查询已保存的当前账号 |
 | `usage backup` | 查询指定账号 |
 | `usage --all` | 依次查询全部账号 |
@@ -225,7 +241,7 @@ python -m unittest discover -s tests -v
 
 测试使用虚构账号，覆盖切换保存刷新后的凭据、保留对话和配置、异常时不覆盖认证、重复导入、失败查询保留缓存、DPAPI 加密以及输出不包含令牌。测试夹具保留沙箱继承权限，生产目录的 ACL 收紧需要在普通 Windows 用户会话中确认。
 
-新增 Claude 模拟测试覆盖双文件切换及回滚、保留项目与其他 OAuth 数据、运行中阻止切换、隔离官方登录、只读用量查询、服务独立账号库、末尾服务参数与帮助、按服务区分的 Tab 补全。当前共 56 项测试。
+新增 Claude 模拟测试覆盖双文件切换及回滚、保留项目与其他 OAuth 数据、运行中阻止切换、隔离官方登录、只读用量查询、服务独立账号库、末尾服务参数与帮助、按服务区分的 Tab 补全。排序测试验证持久顺序、按原编号解析、非法选择不修改列表，以及保持认证和另一个服务的数据不变。当前共 61 项测试。
 
 本机已完成 Codex CLI 0.163.0 的隔离协议握手与无登录状态读取、CC Switch 两账号文件的只读兼容检查。**未替换真实账号认证，未刷新真实令牌，未验证线上用量返回和跨账号续接。** 首次真实验证请在退出客户端后进行。
 

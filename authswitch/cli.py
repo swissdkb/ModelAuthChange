@@ -267,7 +267,7 @@ def menu(manager: Manager):
             print("4 从 CC Switch 导入    5 官方登录添加/更新    6 检查环境")
         else:
             print("5 官方登录添加/更新    6 检查环境")
-        print("7 刷新账号凭据    8 重命名账号    0 退出")
+        print("7 刷新账号凭据    8 重命名账号    9 调整顺序    0 退出")
         choice = input("请选择：").strip()
         try:
             if choice == "0":
@@ -294,6 +294,11 @@ def menu(manager: Manager):
             elif choice == "8":
                 manager.rename(input("原名称或 ID：").strip(), input("新名称：").strip())
                 print("账号已重命名。")
+            elif choice == "9":
+                list_accounts(manager, numbered=True)
+                selectors = input("按期望顺序输入账号编号（空格分隔，例如 2 1）：").split()
+                if selectors:
+                    show_order(manager.reorder(selectors))
         except AppError as error:
             print("操作未完成：" + str(error))
 
@@ -309,6 +314,7 @@ def parser(service: str = "codex", *, combined_help: bool = False) -> argparse.A
                "  auth list claude           查看 Claude 账号与用量\n"
                "  auth use main codex        切换 Codex 账号\n"
                "  auth use main claude       切换 Claude 账号\n"
+               "  auth order main backup     调整 Codex 列表顺序\n"
                "  auth usage --all claude    查询 Claude 全部账号用量\n\n"
                "帮助统一展示两个服务：auth list --help / auth use --help\n"
                "仅 Codex：import-ccswitch、login --device-auth。\n"
@@ -324,7 +330,7 @@ def parser(service: str = "codex", *, combined_help: bool = False) -> argparse.A
     sub = p.add_subparsers(dest="command")
     examples = {"doctor": "doctor", "list": "list", "save": "save main", "use": "use main",
                 "login": "login backup", "refresh": "refresh main", "rename": "rename main work",
-                "usage": "usage --all"}
+                "usage": "usage --all", "order": "order main backup"}
 
     def add_command(name, **kwargs):
         example = examples.get(name)
@@ -362,6 +368,8 @@ def parser(service: str = "codex", *, combined_help: bool = False) -> argparse.A
     rename = add_command("rename", help="修改账号名称")
     rename.add_argument("name")
     rename.add_argument("new_name")
+    order = add_command("order", help="调整列表顺序和编号，不切换账号")
+    order.add_argument("names", nargs="+", help="按期望顺序填写账号别名、编号或 ID；未填写的账号依次排在后面")
     usage = add_command("usage", help="查询额度和重置时间，不切换当前账号")
     group = usage.add_mutually_exclusive_group()
     group.add_argument("name", nargs="?")
@@ -438,9 +446,17 @@ def main(argv=None) -> int:
     elif args.command == "rename":
         manager.rename(args.name, args.new_name)
         print("账号已重命名。")
+    elif args.command == "order":
+        show_order(manager.reorder(args.names))
     elif args.command == "usage":
         return query(manager, args.name, args.all)
     return 0
+
+
+def show_order(accounts: list[dict]):
+    print("已保存列表顺序（未切换账号）：")
+    for number, account in enumerate(accounts, 1):
+        print(f"  {number}. {clean(account['name'])}")
 
 
 def entrypoint():

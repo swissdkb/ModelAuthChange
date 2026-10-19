@@ -80,6 +80,43 @@ class Fixture(unittest.TestCase):
         atomic_write(self.home / "auth.json", json_bytes(credential))
 
 
+class OrderingTests(Fixture):
+    def test_named_order_persists_and_preserves_credentials_and_current_login(self):
+        self.seed("backup", auth("b"))
+        self.seed("main", auth("a"))
+        self.seed("other", auth("c"))
+        self.live(auth("b", "live"))
+        before_login = (self.home / "auth.json").read_bytes()
+        before_accounts = {a["id"]: a for a in self.vault.read()["accounts"]}
+        self.manager.reorder(["main", "backup"])
+        saved = self.vault.read()
+        self.assertEqual([a["name"] for a in saved["accounts"]], ["main", "backup", "other"])
+        self.assertEqual({a["id"]: a for a in saved["accounts"]}, before_accounts)
+        self.assertEqual(find_account(saved, "1")["name"], "main")
+        self.assertEqual((self.home / "auth.json").read_bytes(), before_login)
+
+    def test_numbers_resolve_against_original_order(self):
+        for name, who in (("main", "a"), ("backup", "b"), ("other", "c")):
+            self.seed(name, auth(who))
+        self.manager.reorder(["2", "1"])
+        self.assertEqual([a["name"] for a in self.vault.read()["accounts"]], ["backup", "main", "other"])
+
+    def test_duplicate_unknown_ambiguous_or_empty_order_never_writes_vault(self):
+        self.seed("main", auth("a"))
+        self.seed("max", auth("b"))
+        before = self.vault.path.read_bytes()
+        for selectors in (["main", "1"], ["main", "main"], ["missing"], ["m"], []):
+            with self.assertRaises(AppError):
+                self.manager.reorder(selectors)
+            self.assertEqual(self.vault.path.read_bytes(), before)
+
+    def test_partial_order_moves_only_selected_account_to_front(self):
+        for name, who in (("first", "a"), ("second", "b"), ("third", "c"), ("fourth", "d")):
+            self.seed(name, auth(who))
+        self.manager.reorder(["third"])
+        self.assertEqual([a["name"] for a in self.vault.read()["accounts"]], ["third", "first", "second", "fourth"])
+
+
 class SwitchingTests(Fixture):
     def test_unique_alias_prefix_switches_case_insensitively(self):
         self.seed("main", auth("a"))

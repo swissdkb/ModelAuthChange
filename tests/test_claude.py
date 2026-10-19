@@ -244,6 +244,25 @@ class ClaudeProtocolTests(unittest.TestCase):
 
 
 class ServiceRoutingTests(ClaudeFixture):
+    def test_order_claude_changes_only_that_services_saved_order(self):
+        self.live(codex_auth("a"))
+        self.codex_manager.snapshot("main")
+        self.seed_claude("backup", auth("b"))
+        self.seed_claude("main", auth("a"))
+        self.live_claude(auth("b"))
+        codex_vault = self.vault.path.read_bytes()
+        live_files = self.config.read_bytes(), (self.claude_home / ".credentials.json").read_bytes()
+        with patch("authswitch.cli.ClaudeManager", return_value=self.manager), \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            result = cli.main(["--data-dir", str(self.vault.root), "--claude-home", str(self.claude_home),
+                               "order", "main", "backup", "claude"])
+        self.assertEqual(result, 0)
+        self.assertIn("1. main", out.getvalue())
+        self.assertIn("2. backup", out.getvalue())
+        self.assertEqual([a["name"] for a in self.claude_vault.read()["accounts"]], ["main", "backup"])
+        self.assertEqual(self.vault.path.read_bytes(), codex_vault)
+        self.assertEqual(live_files, (self.config.read_bytes(), (self.claude_home / ".credentials.json").read_bytes()))
+
     def test_trailing_service_and_help_are_parsed_before_any_auth_work(self):
         self.assertEqual(cli.service_args(["use", "main", "claude"]), ("claude", ["use", "main"]))
         self.assertEqual(cli.service_args(["list"]), ("codex", ["list"]))

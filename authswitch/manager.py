@@ -230,6 +230,21 @@ class Manager:
             account["name"] = new_name
             self.vault.write(doc)
 
+    def reorder(self, selectors: list[str]) -> list[dict]:
+        """Move selected accounts to the front, resolving all against the original order."""
+        if not selectors:
+            raise AppError("请指定账号顺序，例如 order main backup，或 order 2 1。")
+        with self.vault.locked():
+            doc = self.vault.read()
+            selected = [find_account(doc, selector) for selector in selectors]
+            ids = [account["id"] for account in selected]
+            if len(ids) != len(set(ids)):
+                raise AppError("同一个账号不能重复出现在顺序中，未修改列表。")
+            selected_ids = set(ids)
+            doc["accounts"] = selected + [a for a in doc["accounts"] if a["id"] not in selected_ids]
+            self.vault.write(doc)
+            return doc["accounts"]
+
     def usage(self, name: str) -> dict:
         binary = codex.find_binary(self.explicit_binary)
         with self.vault.locked():
