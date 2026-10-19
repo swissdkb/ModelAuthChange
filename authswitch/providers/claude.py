@@ -123,7 +123,7 @@ def normalize_usage(value: dict) -> dict:
             buckets.setdefault("claude", {"limitId": "claude"})[
                 "primary" if key == "five_hour" else "secondary"] = usage_window(raw, minutes)
     for key, raw in value.items():
-        if key.startswith("seven_day_") and isinstance(raw, dict):
+        if key.startswith("seven_day_") and key != "seven_day_breakdown" and isinstance(raw, dict):
             label = key.removeprefix("seven_day_").replace("_", " ")
             buckets[key] = {"limitId": key, "limitName": label,
                             "primary": usage_window(raw, 10080)}

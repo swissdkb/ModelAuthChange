@@ -97,6 +97,8 @@ def show_usage(usage: dict | None, *, cached: bool = False):
     if not isinstance(buckets, dict) or not buckets:
         single = payload.get("rateLimits")
         buckets = {"codex": single} if isinstance(single, dict) else {}
+    # Older cached responses may contain this detail object as a quota window.
+    buckets = {key: bucket for key, bucket in buckets.items() if key != "seven_day_breakdown"}
     count = 0
     use_color = color_enabled()
     for key, bucket in buckets.items():

@@ -596,6 +596,14 @@ class SecurityAndDisplayTests(Fixture):
             show_usage({**usage, "error": "offline"})
         self.assertIn("旧缓存", out.getvalue())
         self.assertIn("5h 97% (? reset) | 7d 15% (? reset)", out.getvalue())
+        old_claude_cache = {"payload": {"rateLimitsByLimitId": {
+            "claude": usage["payload"]["rateLimits"],
+            "seven_day_breakdown": {"limitName": "breakdown", "primary": {
+                "usedPercent": None, "windowDurationMins": 10080, "resetsAt": None}}}}}
+        with patch("sys.stdout", new_callable=io.StringIO) as out:
+            show_usage(old_claude_cache, cached=True)
+        self.assertNotIn("breakdown", out.getvalue())
+        self.assertTrue(out.getvalue().startswith("  5h 97% (? reset) | 7d 15% (? reset) [缓存"))
 
     def test_color_disabled_for_redirection_and_no_color_environment(self):
         with patch("sys.stdout", new_callable=io.StringIO):

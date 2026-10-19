@@ -228,12 +228,14 @@ class ClaudeProtocolTests(unittest.TestCase):
     def test_usage_normalizes_primary_weekly_and_model_specific_windows(self):
         result = claude.normalize_usage({"five_hour": {"utilization": 3, "resets_at": "2026-10-19T12:00:00Z"},
             "seven_day": {"utilization": 85, "resets_at": "2026-10-21T12:00:00+00:00"},
-            "seven_day_sonnet": {"utilization": 12, "resets_at": None}, "extra_usage": {"used_credits": 2}})
+            "seven_day_sonnet": {"utilization": 12, "resets_at": None},
+            "seven_day_breakdown": {"sonnet": {"utilization": 12}}, "extra_usage": {"used_credits": 2}})
         self.assertEqual(result["rateLimitsByLimitId"]["claude"]["primary"], {
             "usedPercent": 3, "windowDurationMins": 300,
             "resetsAt": datetime(2026, 10, 19, 12, tzinfo=timezone.utc).timestamp()})
         self.assertEqual(result["rateLimitsByLimitId"]["claude"]["secondary"]["usedPercent"], 85)
         self.assertEqual(result["rateLimitsByLimitId"]["seven_day_sonnet"]["limitName"], "sonnet")
+        self.assertEqual(set(result["rateLimitsByLimitId"]), {"claude", "seven_day_sonnet"})
 
     def test_expired_token_fails_before_network_and_without_refreshing(self):
         expired = auth("a")
