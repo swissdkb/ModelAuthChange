@@ -12,6 +12,10 @@ from .security import AppError, atomic_write, json_bytes
 from .vault import Vault
 
 
+class ClaudeIdentityMismatch(AppError):
+    """Known token/metadata mismatch; never eligible for automatic account saving."""
+
+
 class ClaudeManager(Manager):
     """Separate vault, shared Claude home. Never invoke a model for auth or usage."""
     service = "claude"
@@ -28,7 +32,21 @@ class ClaudeManager(Manager):
 
     def live(self):
         auth = claude.read_auth(self.home, self.config)
-        return (auth, claude.identity(auth)) if auth else (None, None)
+        if auth is None:
+            return None, None
+        ident = claude.identity(auth)
+        # Claude stores tokens and identity in separate files. An old client's
+        # delayed write can pair one user's tokens with another user's metadata.
+        # Reject known mismatches rather than saving those tokens under the wrong user.
+        for saved in self.vault.read()["accounts"]:
+            if saved["identity"]["account_id"] == ident["account_id"]:
+                continue
+            previous = saved["auth"].get("claudeAiOauth", {})
+            if any(auth["claudeAiOauth"].get(field) and auth["claudeAiOauth"].get(field) == previous.get(field)
+                   for field in ("accessToken", "refreshToken")):
+                raise ClaudeIdentityMismatch("Claude 令牌与账号身份不一致，可能有旧会话写回了认证。"
+                                            "请执行 use 目标账号 claude 重新应用；未保存混合凭据。")
+        return auth, ident
 
     def _store(self, doc: dict, name: str, auth: dict, source: str):
         return upsert(doc, name, auth, source, provider=claude, service="claude")
@@ -79,8 +97,9 @@ class ClaudeManager(Manager):
         account = find_account(self.vault.read(), name)
         return self.login(account["name"])
 
-    def switch(self, name: str) -> dict:
-        self.idle_check()
+    def switch(self, name: str, *, require_idle: bool = False) -> dict:
+        if require_idle:
+            self.idle_check()
         with self.vault.locked():
             doc = self.vault.read()
             target = find_account(doc, name)
@@ -88,7 +107,13 @@ class ClaudeManager(Manager):
             credential_path = self.home / ".credentials.json"
             paths = (self.config, credential_path)
             originals = [p.read_bytes() if p.exists() else None for p in paths]
-            auth, ident = self.live()
+            mixed_identity = False
+            try:
+                auth, ident = self.live()
+            except ClaudeIdentityMismatch:
+                # Repair from a known saved account without auto-saving a mixed pair.
+                auth, ident = None, None
+                mixed_identity = True
             if [p.read_bytes() if p.exists() else None for p in paths] != originals:
                 raise AppError("操作期间 Claude 文件已变化，已停止切换。")
             if ident and ident["key"] == target["identity"]["key"] and not superseded(target, auth):
@@ -106,12 +131,13 @@ class ClaudeManager(Manager):
             doc["recovery"] = {"files": [
                 {"path": str(p), "before_base64": base64.b64encode(raw).decode("ascii") if raw is not None else None,
                  "before_hash": fingerprint(raw)} for p, raw in zip(paths, originals)],
-                "target_id": target["id"], "saved_at": now()}
+                "target_id": target["id"], "saved_at": now(), "mixed_identity": mixed_identity}
             self.vault.write(doc)
             metadata["oauthAccount"] = copy.deepcopy(target["auth"]["oauthAccount"])
             credentials["claudeAiOauth"] = copy.deepcopy(target["auth"]["claudeAiOauth"])
             replacements = [json_bytes(metadata), json_bytes(credentials)]
-            self.idle_check()
+            if require_idle:
+                self.idle_check()
             for path, original in zip(paths, originals):
                 if (path.read_bytes() if path.exists() else None) != original:
                     raise AppError("操作期间 Claude 文件已变化，已停止切换。")

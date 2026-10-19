@@ -184,18 +184,16 @@ class SwitchingTests(Fixture):
         switch.assert_not_called()
         self.assertEqual((self.home / "auth.json").read_bytes(), before)
 
-    def test_list_selection_still_checks_running_clients(self):
+    def test_list_selection_no_longer_requires_exiting_running_clients(self):
         self.seed("B", auth("b"))
         self.live(auth("a"))
-        before = (self.home / "auth.json").read_bytes()
         def blocked():
             raise AppError("running")
         self.manager.idle_check = blocked
         with patch("builtins.input", return_value="1"), \
              patch("sys.stdout", new_callable=io.StringIO):
-            with self.assertRaisesRegex(AppError, "running"):
-                switch_from_list(self.manager)
-        self.assertEqual((self.home / "auth.json").read_bytes(), before)
+            self.assertEqual(switch_from_list(self.manager), 0)
+        self.assertEqual(codex.read_auth(self.home), auth("b"))
 
     def test_switch_saves_rotated_outgoing_and_preserves_sessions_settings(self):
         self.seed("A", auth("a", "old"))
@@ -215,6 +213,19 @@ class SwitchingTests(Fixture):
         self.manager.switch("A")
         self.assertEqual(codex.read_auth(self.home), latest)
 
+    def test_old_session_writeback_is_saved_under_its_actual_account(self):
+        self.seed("main", auth("a"))
+        self.seed("backup", auth("b"))
+        self.live(auth("a"))
+        self.manager.switch("backup")
+        # Old A session refreshes and rewrites the shared file after selecting B.
+        self.live(auth("a", "old-session-rotation"))
+        self.manager.switch("backup")
+        saved = self.vault.read()
+        self.assertEqual(find_account(saved, "main")["auth"], auth("a", "old-session-rotation"))
+        self.assertEqual(find_account(saved, "backup")["auth"], auth("b"))
+        self.assertEqual(codex.read_auth(self.home), auth("b"))
+
     def test_unknown_outgoing_account_is_automatically_backed_up(self):
         self.seed("B", auth("b"))
         self.live(auth("unknown"))
@@ -223,7 +234,7 @@ class SwitchingTests(Fixture):
         self.assertEqual(len(doc["accounts"]), 2)
         self.assertEqual(json.loads(doc["recovery"]["before"]), auth("unknown"))
 
-    def test_running_client_blocks_before_any_write(self):
+    def test_optional_idle_requirement_blocks_before_any_write(self):
         self.seed("B", auth("b"))
         self.live(auth("a"))
         before = (self.home / "auth.json").read_bytes(), self.vault.path.read_bytes()
@@ -231,7 +242,7 @@ class SwitchingTests(Fixture):
             raise AppError("running")
         self.manager.idle_check = blocked
         with self.assertRaises(AppError):
-            self.manager.switch("B")
+            self.manager.switch("B", require_idle=True)
         self.assertEqual(before, ((self.home / "auth.json").read_bytes(), self.vault.path.read_bytes()))
 
     def test_concurrent_auth_change_is_not_overwritten(self):

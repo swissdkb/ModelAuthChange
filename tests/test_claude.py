@@ -86,14 +86,39 @@ class ClaudeSwitchTests(ClaudeFixture):
         self.manager.switch("main")
         self.assertEqual(self.manager.live()[0], auth("a", "latest"))
 
-    def test_running_claude_blocks_switch_before_any_file_write(self):
+    def test_optional_idle_requirement_blocks_claude_switch_before_any_write(self):
         self.seed_claude("backup", auth("b"))
         self.live_claude(auth("a"))
         before = self.config.read_bytes(), self.claude_vault.path.read_bytes()
         self.manager.idle_check = Mock(side_effect=AppError("Claude running"))
         with self.assertRaisesRegex(AppError, "Claude running"):
-            self.manager.switch("backup")
+            self.manager.switch("backup", require_idle=True)
         self.assertEqual(before, (self.config.read_bytes(), self.claude_vault.path.read_bytes()))
+
+    def test_claude_default_switch_leaves_other_sessions_running(self):
+        self.seed_claude("backup", auth("b"))
+        self.live_claude(auth("a"))
+        self.manager.idle_check = Mock(side_effect=AppError("Claude running"))
+        self.manager.switch("backup")
+        self.manager.idle_check.assert_not_called()
+        self.assertEqual(self.manager.live()[0], auth("b"))
+
+    def test_known_old_session_writeback_cannot_be_saved_under_wrong_user(self):
+        self.seed_claude("main", auth("a"))
+        self.seed_claude("backup", auth("b"))
+        self.live_claude(auth("b"))
+        # Old A session writes only its credentials, leaving B's identity file.
+        atomic_write(self.claude_home / ".credentials.json", json_bytes({"claudeAiOauth": auth("a")["claudeAiOauth"]}))
+        before = self.claude_vault.path.read_bytes()
+        with self.assertRaisesRegex(AppError, "令牌与账号身份不一致"):
+            self.manager.snapshot("backup")
+        self.assertEqual(self.claude_vault.path.read_bytes(), before)
+        self.manager.switch("backup")
+        self.assertEqual(self.manager.live()[0], auth("b"))
+        doc = self.claude_vault.read()
+        self.assertTrue(doc["recovery"]["mixed_identity"])
+        self.assertEqual(find_account(doc, "main")["auth"], auth("a"))
+        self.assertEqual(find_account(doc, "backup")["auth"], auth("b"))
 
     def test_second_file_failure_rolls_back_first_file_and_keeps_backup(self):
         self.seed_claude("backup", auth("b"))

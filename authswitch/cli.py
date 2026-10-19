@@ -189,7 +189,7 @@ def switch_from_list(manager: Manager, refresh: bool = False) -> int:
             continue
         # Pass the ID from the displayed snapshot, never re-resolve a list index.
         account = manager.switch(accounts[index]["id"])
-        print("已切换到 " + clean(account["name"]) + "。重新运行 " + manager.resume_command + " 选择原来的对话。")
+        show_switched(account)
         return 0
 
 
@@ -357,8 +357,9 @@ def parser(service: str = "codex", *, combined_help: bool = False) -> argparse.A
         imp = add_command("import-ccswitch", help="仅 Codex：导入 CC Switch 订阅账号")
         imp.add_argument("--source", type=Path, default=Path.home() / ".cc-switch")
         imp.add_argument("--dry-run", action="store_true", help="只预览可导入账号，不写凭据库")
-    use = add_command("use", help="退出所选服务的客户端后切换认证，保留对话和设置")
+    use = add_command("use", help="切换共享认证，保留已打开的会话、对话和设置")
     use.add_argument("name", help="账号编号、名称、唯一名称前缀或 ID")
+    use.add_argument("--require-idle", action="store_true", help="可选：要求相关客户端全部退出后再切换")
     login = add_command("login", help="在隔离目录完成官方登录，保存后可 use 激活")
     login.add_argument("name")
     if service == "codex" or combined_help:
@@ -435,8 +436,8 @@ def main(argv=None) -> int:
             added, skipped = manager.import_ccswitch(args.source)
             print(f"已导入 {added} 个账号；跳过已存在的 {skipped} 个账号。CC Switch 原文件未修改。")
     elif args.command == "use":
-        account = manager.switch(args.name)
-        print("已切换到 " + clean(account["name"]) + "。重新运行 " + manager.resume_command + " 选择原来的对话。")
+        account = manager.switch(args.name, require_idle=args.require_idle)
+        show_switched(account)
     elif args.command == "login":
         account = manager.login(args.name, getattr(args, "device_auth", False))
         print("已保存 " + clean(account["name"]) + "；使用 use 激活。")
@@ -451,6 +452,11 @@ def main(argv=None) -> int:
     elif args.command == "usage":
         return query(manager, args.name, args.all)
     return 0
+
+
+def show_switched(account: dict):
+    print("已切换共享认证到 " + clean(account["name"]) + "，已打开的会话保持运行。")
+    print("若某个会话的账号未更新，只需重开该会话。")
 
 
 def show_order(accounts: list[dict]):

@@ -171,19 +171,22 @@ class Manager:
             account["saved_at"] = now()
             self.vault.write(doc)
 
-    def switch(self, name: str) -> dict:
-        self.idle_check()
+    def switch(self, name: str, *, require_idle: bool = False) -> dict:
+        if require_idle:
+            self.idle_check()
         with self.vault.locked():
             doc = self.vault.read()
             target = find_account(doc, name)
+            path = self.home / "auth.json"
+            original = path.read_bytes() if path.exists() else None
             auth, ident = self.live()
+            if (path.read_bytes() if path.exists() else None) != original:
+                raise AppError("操作期间本机认证已变化，已停止切换。请重新执行。")
             if ident and ident["key"] == target["identity"]["key"] and not superseded(target, auth):
                 target["auth"] = auth
                 target["saved_at"] = now()
                 self.vault.write(doc)
                 return target
-            path = self.home / "auth.json"
-            original = path.read_bytes() if path.exists() else None
             if auth:
                 previous = next((a for a in doc["accounts"]
                                  if a["identity"]["key"] == ident["key"]), None)
@@ -196,7 +199,8 @@ class Manager:
                                "target_id": target["id"], "saved_at": now()}
             self.vault.write(doc)
             prepared = self._prepared_auth(target, doc)
-            self.idle_check()  # Another client could have started while preparing credentials.
+            if require_idle:
+                self.idle_check()
             current = path.read_bytes() if path.exists() else None
             if current != original:
                 raise AppError("操作期间本机认证已变化，已停止切换。请重新执行。")
