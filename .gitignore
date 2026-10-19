@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.test-tmp/
+.runtime-check/
+.publish/
+*.dat
+auth.json
+accounts.json
+*.log
+.credentials.json
+.claude.json
+.env
+.env.*
+!.env.example
+vault.lock
+*.authswitch-*.bak
